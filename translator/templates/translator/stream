@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign Language Stream</title>
+    <style>
+        #videoElement {
+            width: 640px;
+            height: 480px;
+            border: 1px solid black;
+        }
+        #signOutput {
+            margin-top: 20px;
+            font-size: 1.5em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sign Language Stream</h1>
+    <video id="videoElement" autoplay></video>
+    <div id="signOutput">Detected Sign: none</div>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const signOutput = document.getElementById('signOutput');
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+            }
+        }
+
+        function captureFrame() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/jpeg');
+        }
+
+        async function sendFrame() {
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                setTimeout(sendFrame, 100); // Try again if video not loaded
+                return;
+            }
+            const imageData = captureFrame();
+            try {
+                const response = await fetch('/process_frame/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken') // Ensure CSRF token is included
+                    },
+                    body: JSON.stringify({ image_data: imageData })
+                });
+                const data = await response.json();
+                signOutput.textContent = `Detected Sign: ${data.detected_sign}`;
+            } catch (error) {
+                console.error("Error sending frame:", error);
+            }
+            setTimeout(sendFrame, 100); // Send frame every 100ms (adjust as needed)
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    let cookie = cookies[i].trimStart();
+                    // Does this cookie string begin with the name we want?
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        startCamera();
+        setTimeout(sendFrame, 2000); // Start sending frames after a short delay
+    </script>
+</body>
+</html>
